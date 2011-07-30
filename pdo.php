@@ -1,8 +1,8 @@
-<?php
+<?
 
 class madPdo extends PDO {
-   
-    public $handle = null;   
+
+    public $handle = null;
     public $querysections = array('alter', 'create', 'drop', 'select', 'delete', 'insert', 'update','from','where','limit','order');
     public $operators = array('=', '<>', '<', '<=', '>', '>=', 'like', 'clike', 'slike', 'not', 'is', 'in', 'between');
     public $types = array('character', 'char', 'varchar', 'nchar', 'bit', 'numeric', 'decimal', 'dec', 'integer', 'int', 'smallint', 'float', 'real', 'double', 'date', 'datetime', 'time', 'timestamp', 'interval', 'bool', 'boolean', 'set', 'enum', 'text');
@@ -37,7 +37,7 @@ class madPdo extends PDO {
 
         parent::__construct( $name_host, $username, $password, $driverOptions );
         $this->setAttribute( PDO::ATTR_STATEMENT_CLASS, array( 'madPDOStatement' ) );
-        
+
         if ( function_exists( 'apc_fetch' ) && $cache = apc_fetch( 'mad schmaless tables' ) ) {
             $this->schemalessTables = $cache;
         } else {
@@ -62,7 +62,7 @@ class madPdo extends PDO {
                 $this->schemalessTables[$table] = array();
             }
         }
-        
+
         // find attribute tables
         foreach( $tables as $table ) {
             $fields = parent::query( "describe $table" )->fetchAll(  );
@@ -83,8 +83,8 @@ class madPdo extends PDO {
             apc_store( 'mad query cache', $this->queryCache );
         }
     }
-    public function prepare(  ) {
-        $args = func_get_args(  );
+    public function prepare( $statement, $driver_options= false) {
+        $args= array( $statement, $driver_options );
         $statement = $args[0];
         $driverOptions = isset( $args[1] ) ? $args[1] : array(  );
 
@@ -93,19 +93,19 @@ class madPdo extends PDO {
          } elseif ( strtolower( substr( trim( $statement ), 0, 6 ) ) == 'select' ) {
              $key = $statement;
              $cachedStatement = isset( $this->queryCache[$key] ) ? $this->queryCache[$key] : null;
- 
+
              if ( $cachedStatement ) {
                  $statement = $cachedStatement;
              } else {
                  $statement = $this->rewriteSelect( $statement );
                  $this->queryCache[$key] = $statement;
              }
-             
+
              $return = parent::prepare( $statement );
          } elseif ( strtolower( substr( $statement, 0, 6 ) ) == 'delete' ) {
-         
+
          } elseif ( strtolower( substr( $statement, 0, 6 ) ) == 'update' ) {
- 
+
          } else {
              $return = parent::prepare( $statement );
          }
@@ -128,14 +128,14 @@ class madPdo extends PDO {
      * @return token array
      */
     public function tokenize($sql,$cleanWhitespace = true) {
-       
+
         /**
          * Strip extra whitespace from the query
          */
         if($cleanWhitespace) {
          $sql = ltrim(preg_replace('/[\\s]{2,}/',' ',$sql));
         }
-               
+
         /**
          * Regular expression based on SQL::Tokenizer's Tokenizer.pm by Igor Sutton Lopes
          **/
@@ -149,25 +149,25 @@ class madPdo extends PDO {
         $regex .= '|[\t\ ]+';
         $regex .= '|[\.]'; #period
         $regex .= '|[\s]'; #whitespace
-       
+
         $regex .= ')'; # end group
-       
+
         // get global match
         preg_match_all( '/' . $regex . '/smx', $sql, $result );
-       
+
         // return tokens
         return $result[0];
-   
+
     }
     public function rewriteSelect($sql,$cleanWhitespace = true) {
         // copy and cut the query
         $tokens = $this->tokenize( $sql, $cleanWhitespace );
-       
+
         $join = array();
         $backticks = '';
         $selectAll = false;
         $querySection = '';
-        
+
         // rewrite columns
         foreach ( $tokens as $key => $token ) {
             if ( in_array( strtolower( $token ), $this->querysections ) ) {
@@ -216,7 +216,7 @@ class madPdo extends PDO {
                             $join[$schemalessTable][] = $column;
                         }
                     }
-                    
+
                     $tokens[$key] = implode( ', ', $selects );
                     continue;
                 }
@@ -288,11 +288,11 @@ class madPdo extends PDO {
     }
 
     public function prepareInsertSet( $sql, $table, $cleanWhitespace = true ) {
-        $statement = new madPDOStatementWrapper( &$this->schemalessTables, $this );
-        
+        $statement = new madPDOStatementWrapper( $this->schemalessTables, $this );
+
         // copy and cut the query
         $tokens = $this->tokenize( $sql, $cleanWhitespace );
-        
+
         // parse data
         $style = false;
         $data = array(  );
@@ -324,7 +324,7 @@ class madPdo extends PDO {
             $statement->objects[] = $createStatement;
             unset( $createStatement );
         }
-   
+
         $insertStatement = parent::prepare( "INSERT INTO $table VALUES()" );
         $insertStatement->insertsSchemalessRow = true;
         $statement->objects[] = $insertStatement;
@@ -348,7 +348,7 @@ class madPdo extends PDO {
     }
     public function query(  ) {
         $args = func_get_args(  );
-        
+
         $statement = $this->prepare( $args[0] );
 
         switch ( count( $args ) ) {
@@ -384,15 +384,12 @@ class madPDOFramework extends madPDO {
         }
     }
 
-    public function prepare(  ) {
-        $args = func_get_args(  );
+    public function prepare( $statement, $driver_options= false) {
         try {
-            switch ( count( $args ) ) {
-                case 1:
-                    return parent::prepare( $args[0] );
-                case 2:
-                    return parent::prepare( $args[0], $args[1] );
-            }
+          if($statement && $driver_options)
+            return parent::prepare( $statement, $driver_options );
+          else
+            parent::prepare( $statement );
         } catch( PDOException $e ) {
             $this->shell( $e->s->queryString );
         }
@@ -414,13 +411,13 @@ class madPDOFramework extends madPDO {
 
     public function shellCli( $input = '' ) {
         $hist = $_ENV['HOME'] . '/.pdo_history';
-        
+
         if ( file_exists( $hist ) ) {
             readline_read_history( $hist );
         }
 
         $prompt = 'mysql-> ';
-        
+
         if ( $input ) {
             echo "Passed argument: $input\n";
             $input = '';
@@ -430,20 +427,20 @@ class madPDOFramework extends madPDO {
             if ( $input ) {
                 $prompt = '-> ';
             }
-    
+
             $input .= $line;
-    
+
             if ( substr( $line, -1 ) == ';' ) {
                 echo "Rewriting $input\n";
 
                 $statement = $this->prepare( $input );
-    
+
                 if ( $statement instanceof madPDOStatement ) {
                     echo "Will proxy:\n";
                     echo $statement->queryString;
                     echo "\n";
 
-                    echo shell_exec( sprintf( 
+                    echo shell_exec( sprintf(
                         'mysql -e \'%s\' %s',
                         str_replace( "'", '\\\'', $statement->queryString ),
                         $this->dbName
@@ -480,7 +477,7 @@ class madPDOFramework extends madPDO {
                     );
                 }
 
-                $table[] = sprintf( 
+                $table[] = sprintf(
                     '<tr><td>%s</td></tr>',
                     implode( '</td><td>', array_values( $row ) )
                 );
@@ -488,9 +485,9 @@ class madPDOFramework extends madPDO {
         }
 
         $html = array(  );
-        
+
         if ( isset( $query ) ) {
-            $html[] = sprintf( 
+            $html[] = sprintf(
                 '<pre clas[] ="sh_sql">%s</pre>',
                 $query
             );
@@ -506,13 +503,13 @@ class madPDOFramework extends madPDO {
         );
         $html[] = '</form>';
 
-        $html[] = sprintf( 
+        $html[] = sprintf(
             '<table>%s</table>',
             implode( "\n\t", $table )
         );
 
         $html = implode( "\n", $html );
-    
+
         if ( $output ) {
             echo $html;
         }
@@ -550,7 +547,7 @@ class madPDOStatementWrapper {
 
         foreach( $this->objects as $object ) {
             if ( $object->insertAttribute && in_array( $object->insertAttribute, $input_parameters ) ) {
-                // work around: Invalid parameter number: number of bound 
+                // work around: Invalid parameter number: number of bound
                 // variables does not match number of tokens
                 $result = $object->execute( array(
                     $object->insertAttribute => $input_parameters[$object->insertAttribute],
@@ -559,11 +556,11 @@ class madPDOStatementWrapper {
             } else {
                 $result = $object->execute( $input_parameters );
             }
-            
+
             if ( !$result ) {
                 $success = false;
             }
-            
+
             if ( $object->insertsSchemalessRow && !isset( $input_parameters['id'] ) ) {
                 $input_parameters['id'] = $this->pdo->lastInsertId(  );
             }
@@ -571,7 +568,7 @@ class madPDOStatementWrapper {
             if ( $object->createTable && !isset( $this->schemalessTables[$object->createTable] ) ) {
                 $this->schemalessTables[$object->createTable] = array();
             }
-   
+
             if ( $object->createColumn && !in_array( $object->createColumn[1], $this->schemalessTables[$object->createColumn[0]] ) ) {
                 $this->schemalessTables[$object->createColumn[0]][] = $object->createColumn[1];
             }
@@ -593,12 +590,10 @@ class madPDOException extends PDOException {
     public function __construct( PDOException $e, PDOStatement $s ) {
         $this->e = $e;
         $this->s = $s;
-        parent::__construct( sprintf(  
+        parent::__construct( sprintf(
             "Query failure: %s Query: ",
             $this->e->getMessage(  ),
             $this->s->queryString
         ) );
     }
 }
-
-?>
